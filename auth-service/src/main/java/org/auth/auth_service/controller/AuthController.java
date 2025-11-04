@@ -7,13 +7,17 @@ import org.auth.auth_service.model.User;
 import org.auth.auth_service.repo.UserRepository;
 import org.auth.auth_service.util.JwtUtil;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/auth")
@@ -58,12 +62,17 @@ public class AuthController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<?> me(@RequestHeader(name = "Authorization", required = false) String auth) {
-        // simple info: token parsing if provided (optional)
-        if (auth == null || !auth.startsWith("Bearer "))
-            return ResponseEntity.ok("anonymous");
-        String token = auth.substring(7);
-        var claims = jwtUtil.parseToken(token).getBody();
-        return ResponseEntity.ok(claims);
+    public ResponseEntity<?> me(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "unauthorized"));
+        }
+        // authentication.getPrincipal() is the subject (we used subject as email)
+        String subject = (String) authentication.getPrincipal();
+        var authorities = authentication.getAuthorities().stream().map(Object::toString).toList();
+        Map<String, Object> result = new HashMap<>();
+        result.put("sub", subject);
+        result.put("roles", authorities);
+        return ResponseEntity.ok(result);
     }
+
 }

@@ -18,6 +18,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 
 import java.time.Instant;
@@ -75,7 +79,7 @@ public class AuthController {
     // jwtExpirySeconds));
     // }
     @PostMapping("/login")
-    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest req) {
+    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest req, HttpServletResponse response) {
         User user = userRepo.findByEmail(req.getEmail())
                 .orElseThrow(() -> new RuntimeException("Invalid credentials"));
 
@@ -99,6 +103,15 @@ public class AuthController {
 
         // create & persist refresh token (opaque string stored in DB)
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(user);
+
+        // Set refresh token as HttpOnly cookie
+        Cookie refreshCookie = new Cookie("refreshToken", refreshToken.getToken());
+        refreshCookie.setHttpOnly(true);
+        refreshCookie.setPath("/");
+        refreshCookie.setSecure(false); 
+        int refreshTokenValiditySec = 60 * 60 * 24 * 30; // e.g. 30 days
+        refreshCookie.setMaxAge(refreshTokenValiditySec);
+        response.addCookie(refreshCookie);
 
         // return both tokens to client
         // Reusing TokenRefreshResponse(accessToken, refreshToken) you defined earlier
@@ -144,6 +157,65 @@ public class AuthController {
             // Consider revoking all tokens for this user if reuse detected
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid refresh token");
         }
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<?> logout(HttpServletRequest request, HttpServletResponse response) {
+        // 1) Try to read access token (optional — for audit)
+        String header = request.getHeader("Authorization");
+        String subjectFromAccessToken = null;
+        if (header != null && header.startsWith("Bearer ")) {
+            String accessToken = header.substring(7);
+            System.out.println("Access token on logout: " + accessToken);
+            try {
+                var jws = jwtUtil.parseToken(accessToken);
+                subjectFromAccessToken = jws.getBody().getSubject();
+            } catch (Exception ex) {
+                // ignore invalid/expired access token
+                ex.printStackTrace();
+            }
+        }
+
+        // 2) Try to get refresh token from cookie (preferred for httpOnly refresh
+        // tokens)
+        String refreshToken = null;
+        if (request.getCookies() != null) {
+            for (Cookie c : request.getCookies()) {
+                if ("refreshToken".equals(c.getName())) {
+                    refreshToken = c.getValue();
+                    break;
+                }
+            }
+        }
+
+        // 3) Revoke refresh token if present
+        if (refreshToken != null) {
+            try {
+                refreshTokenService.verifyAndConsume(refreshToken); // or refreshTokenService.revoke(refreshToken)
+            } catch (Exception e) {
+                // idempotent: swallow errors (already expired/consumed)
+                e.printStackTrace();
+            }
+        } else if (subjectFromAccessToken != null) {
+            // Optional: revoke all refresh tokens for this user
+            // refreshTokenService.deleteByUserEmail(subjectFromAccessToken);
+        }
+
+        // 4) Clear refresh token cookie on client
+        Cookie cleared = new Cookie("refreshToken", null);
+        cleared.setHttpOnly(true);
+        cleared.setPath("/"); // same path as you used for setting it
+        cleared.setMaxAge(0); // delete cookie
+        // secure/samesite settings as appropriate:
+        // cleared.setSecure(true);
+        response.addCookie(cleared);
+
+        // 5) Response
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("message", "Logged out");
+        if (subjectFromAccessToken != null)
+            resp.put("user", subjectFromAccessToken);
+        return ResponseEntity.ok(resp);
     }
 
 }

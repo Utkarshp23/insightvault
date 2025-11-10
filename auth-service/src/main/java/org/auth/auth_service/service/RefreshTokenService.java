@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 public class RefreshTokenService {
 
     // safe default: 7 days (in ms) to avoid failing when external config is missing
-    @Value("${app.jwt.refreshExpirationMs:604800000}")
+    @Value("${jwt.refreshExpirationMs: 604800000}")
     private Long refreshTokenDurationMs;
 
     @Autowired

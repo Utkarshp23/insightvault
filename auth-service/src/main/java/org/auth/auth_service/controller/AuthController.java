@@ -13,11 +13,15 @@ import org.auth.auth_service.service.RefreshTokenService;
 import org.auth.auth_service.util.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+
+import com.netflix.discovery.converters.Auto;
 
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -35,21 +39,29 @@ import java.util.stream.Collectors;
 @RequestMapping("/auth")
 public class AuthController {
 
-    private final UserRepository userRepo;
-    private final PasswordEncoder passwordEncoder;
-    private final JwtUtil jwtUtil;
-    private final long jwtExpirySeconds;
+    @Autowired
+    private UserRepository userRepo;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private JwtUtil jwtUtil;
+
+    @Value("${jwt.expiration:15000}")
+    private long jwtExpirySeconds;
 
     @Autowired
     private RefreshTokenService refreshTokenService;
 
-    public AuthController(UserRepository userRepo, PasswordEncoder passwordEncoder, JwtUtil jwtUtil,
-            @Value("${jwt.expiration:3600}") long jwtExpirySeconds) {
-        this.userRepo = userRepo;
-        this.passwordEncoder = passwordEncoder;
-        this.jwtUtil = jwtUtil;
-        this.jwtExpirySeconds = jwtExpirySeconds;
-    }
+    // public AuthController(UserRepository userRepo, PasswordEncoder
+    // passwordEncoder, JwtUtil jwtUtil,
+    // @Value("${jwt.expiration:3600}") long jwtExpirySeconds) {
+    // this.userRepo = userRepo;
+    // this.passwordEncoder = passwordEncoder;
+    // this.jwtUtil = jwtUtil;
+    // this.jwtExpirySeconds = jwtExpirySeconds;
+    // }
 
     @PostMapping("/signup")
     public ResponseEntity<?> signup(@Valid @RequestBody SignupRequest req) {
@@ -108,7 +120,7 @@ public class AuthController {
         Cookie refreshCookie = new Cookie("refreshToken", refreshToken.getToken());
         refreshCookie.setHttpOnly(true);
         refreshCookie.setPath("/");
-        refreshCookie.setSecure(false); 
+        refreshCookie.setSecure(false);
         int refreshTokenValiditySec = 60 * 60 * 24 * 30; // e.g. 30 days
         refreshCookie.setMaxAge(refreshTokenValiditySec);
         response.addCookie(refreshCookie);
@@ -132,29 +144,79 @@ public class AuthController {
         return ResponseEntity.ok(result);
     }
 
+    // @PostMapping("/refresh")
+    // public ResponseEntity<?> refreshToken(@RequestBody TokenRefreshRequest
+    // request) {
+    // String requestToken = request.getRefreshToken(); // could come from cookie
+    // instead
+    // try {
+    // RefreshToken used = refreshTokenService.verifyAndConsume(requestToken);
+    // User user = used.getUser();
+
+    // List<String> roles = Arrays.stream(user.getRoles().split(","))
+    // .map(String::trim)
+    // .collect(Collectors.toList());
+
+    // String accessToken = jwtUtil.generateToken(user.getEmail(), roles);
+
+    // // create new refresh token (rotation)
+    // RefreshToken newRefresh = refreshTokenService.createRefreshToken(user);
+    // used.setReplacedByToken(newRefresh.getToken());
+    // // save used token already marked revoked in verifyAndConsume
+
+    // return ResponseEntity.ok(new TokenRefreshResponse(accessToken,
+    // newRefresh.getToken()));
+    // } catch (TokenRefreshException e) {
+    // // suspicious: token not found/expired/revoked => force logout/all sessions
+    // // revoke
+    // // Consider revoking all tokens for this user if reuse detected
+    // return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid refresh
+    // token");
+    // }
+    // }
+
     @PostMapping("/refresh")
-    public ResponseEntity<?> refreshToken(@RequestBody TokenRefreshRequest request) {
-        String requestToken = request.getRefreshToken(); // could come from cookie instead
+    public ResponseEntity<?> refreshToken(
+            @CookieValue(value = "refreshToken", required = false) String refreshTokenFromCookie,
+            @RequestBody(required = false) TokenRefreshRequest request, // optional fallback
+            HttpServletResponse response) {
+
+        // Prefer cookie, fallback to body
+        String requestToken = refreshTokenFromCookie != null ? refreshTokenFromCookie
+                : (request != null ? request.getRefreshToken() : null);
+
+        if (requestToken == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("No refresh token");
+        }
+
         try {
             RefreshToken used = refreshTokenService.verifyAndConsume(requestToken);
             User user = used.getUser();
 
             List<String> roles = Arrays.stream(user.getRoles().split(","))
-                    .map(String::trim)
-                    .collect(Collectors.toList());
+                    .map(String::trim).collect(Collectors.toList());
 
             String accessToken = jwtUtil.generateToken(user.getEmail(), roles);
 
-            // create new refresh token (rotation)
+            // rotation: create new refresh token
             RefreshToken newRefresh = refreshTokenService.createRefreshToken(user);
             used.setReplacedByToken(newRefresh.getToken());
-            // save used token already marked revoked in verifyAndConsume
+            // persist changes where needed
 
-            return ResponseEntity.ok(new TokenRefreshResponse(accessToken, newRefresh.getToken()));
+            // Set HttpOnly refresh cookie (server-side)
+            ResponseCookie cookie = ResponseCookie.from("refreshToken", newRefresh.getToken())
+                    .httpOnly(true)
+                    .secure(true) // ensure HTTPS in production
+                    .path("/") // adjust path if needed
+                    .sameSite("Strict") // or Lax/None depending on cross-site needs
+                    .maxAge(newRefresh.getExpiresAt().getEpochSecond()) // or set desired expiry
+                    .build();
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.SET_COOKIE, cookie.toString())
+                    .body(new TokenRefreshResponse(accessToken, /* optionally null or omit refresh token */ null));
         } catch (TokenRefreshException e) {
-            // suspicious: token not found/expired/revoked => force logout/all sessions
-            // revoke
-            // Consider revoking all tokens for this user if reuse detected
+            // revoke/detect reuse as appropriate
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid refresh token");
         }
     }

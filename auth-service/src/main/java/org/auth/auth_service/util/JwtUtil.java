@@ -18,12 +18,20 @@ import java.util.stream.Collectors;
 public class JwtUtil {
 
     private final Key signingKey;
-    private final long validityMs;
+    private final long validityMs; // TTL in milliseconds
+    private final long expirationSeconds; // keep original seconds if you need it
 
-    public JwtUtil(@Value("${jwt.secret}") String secret, @Value("${jwt.expiration:3600}") long expirationSeconds) {
+    public JwtUtil(
+            @Value("${jwt.secret}") String secret,
+            @Value("${jwt.expiration-seconds:900}") long expirationSeconds // default 15min
+    ) {
         byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+        if (keyBytes.length < 32) {
+            throw new IllegalArgumentException("jwt.secret must be at least 32 bytes for HS256");
+        }
         this.signingKey = Keys.hmacShaKeyFor(keyBytes);
-        this.validityMs = expirationSeconds * 1000;
+        this.expirationSeconds = expirationSeconds;
+        this.validityMs = expirationSeconds * 1000L;
     }
 
     public String generateToken(String subject, List<String> roles) {
@@ -31,28 +39,39 @@ public class JwtUtil {
         Claims claims = Jwts.claims().setSubject(subject);
         claims.put("roles", roles);
 
+        Date expiry = new Date(now + validityMs);
+
         return Jwts.builder()
                 .setClaims(claims)
                 .setIssuedAt(new Date(now))
-                .setExpiration(new Date(now + validityMs))
+                .setExpiration(expiry)
                 .signWith(signingKey, SignatureAlgorithm.HS256)
                 .compact();
     }
 
+    // unify: use configured TTL for access tokens as well
     public String generateAccessToken(UserDetails userDetails) {
-        Instant now = Instant.now();
+        long now = System.currentTimeMillis();
+        Date expiry = new Date(now + validityMs);
+
         return Jwts.builder()
                 .setSubject(userDetails.getUsername())
                 .claim("roles",
-                        userDetails.getAuthorities().stream().map(GrantedAuthority::getAuthority)
+                        userDetails.getAuthorities().stream()
+                                .map(GrantedAuthority::getAuthority)
                                 .collect(Collectors.toList()))
-                .setIssuedAt(Date.from(now))
-                .setExpiration(Date.from(now.plusSeconds(60 * 15))) // 15 minutes
+                .setIssuedAt(new Date(now))
+                .setExpiration(expiry)
                 .signWith(signingKey, SignatureAlgorithm.HS256)
                 .compact();
     }
 
     public Jws<Claims> parseToken(String token) {
         return Jwts.parserBuilder().setSigningKey(signingKey).build().parseClaimsJws(token);
+    }
+
+    // optional helper
+    public long getExpirationSeconds() {
+        return expirationSeconds;
     }
 }

@@ -92,6 +92,7 @@ public class AuthController {
     // }
     @PostMapping("/login")
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequest req, HttpServletResponse response) {
+        System.out.println("Login attempt for user: " + req.getEmail());
         User user = userRepo.findByEmail(req.getEmail())
                 .orElseThrow(() -> new RuntimeException("Invalid credentials"));
 
@@ -110,6 +111,7 @@ public class AuthController {
                     .collect(Collectors.toList());
         }
 
+        System.out.println();
         // create access token (JWT)
         String accessToken = jwtUtil.generateToken(user.getEmail(), roles);
 
@@ -125,6 +127,8 @@ public class AuthController {
         refreshCookie.setMaxAge(refreshTokenValiditySec);
         response.addCookie(refreshCookie);
 
+        System.out.println("Generated access token: " + accessToken);
+        System.out.println("Generated refresh token: " + refreshToken.getToken());
         // return both tokens to client
         // Reusing TokenRefreshResponse(accessToken, refreshToken) you defined earlier
         return ResponseEntity.ok(new TokenRefreshResponse(accessToken, refreshToken.getToken()));
@@ -132,6 +136,7 @@ public class AuthController {
 
     @GetMapping("/me")
     public ResponseEntity<?> me(Authentication authentication) {
+        System.out.println("called /me endpoint");
         if (authentication == null || !authentication.isAuthenticated()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "unauthorized"));
         }
@@ -181,6 +186,9 @@ public class AuthController {
             @RequestBody(required = false) TokenRefreshRequest request, // optional fallback
             HttpServletResponse response) {
 
+        System.out.println("Refresh token request received"+
+                (refreshTokenFromCookie != null ? " from cookie" : "") +
+                (request != null && request.getRefreshToken() != null ? " from body" : ""));
         // Prefer cookie, fallback to body
         String requestToken = refreshTokenFromCookie != null ? refreshTokenFromCookie
                 : (request != null ? request.getRefreshToken() : null);

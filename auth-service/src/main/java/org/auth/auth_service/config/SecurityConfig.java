@@ -35,6 +35,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(new JwtAuthenticationEntryPoint()))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/.well-known/jwks.json").permitAll()
                         .requestMatchers("/auth/signup", "/auth/login","/auth/refresh", "/actuator/**").permitAll()
                         .anyRequest().authenticated())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

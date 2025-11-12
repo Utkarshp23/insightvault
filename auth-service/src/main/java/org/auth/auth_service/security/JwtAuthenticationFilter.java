@@ -15,6 +15,8 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import com.nimbusds.jwt.JWTClaimsSet;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -42,13 +44,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String token = header.substring(7);
         try {
-            Jws<Claims> jws = jwtUtil.parseToken(token);
-            Claims claims = jws.getBody();
+            JWTClaimsSet claims = jwtUtil.parseAndVerify(token);
+            // Claims claims = jws.getBody();
             String subject = claims.getSubject();
 
             // roles can be stored as List<String> or CSV. Handle both.
             List<String> roles = new ArrayList<>();
-            Object rolesObj = claims.get("roles");
+            Object rolesObj = claims.getStringListClaim("roles");
             if (rolesObj instanceof List) {
                 @SuppressWarnings("unchecked")
                 List<Object> list = (List<Object>) rolesObj;
@@ -68,7 +70,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
             SecurityContextHolder.getContext().setAuthentication(auth);
             filterChain.doFilter(request, response);
-        } catch (JwtException ex) {
+        } catch (Exception ex) {
             // Token invalid/expired -> respond 401 JSON and do not continue filter chain
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);

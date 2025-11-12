@@ -22,6 +22,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import com.netflix.discovery.converters.Auto;
+import com.nimbusds.jose.JOSEException;
+import com.nimbusds.jwt.JWTClaimsSet;
 
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -91,7 +93,7 @@ public class AuthController {
     // jwtExpirySeconds));
     // }
     @PostMapping("/login")
-    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest req, HttpServletResponse response) {
+    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest req, HttpServletResponse response) throws JOSEException {
         System.out.println("Login attempt for user: " + req.getEmail());
         User user = userRepo.findByEmail(req.getEmail())
                 .orElseThrow(() -> new RuntimeException("Invalid credentials"));
@@ -223,7 +225,7 @@ public class AuthController {
             return ResponseEntity.ok()
                     .header(HttpHeaders.SET_COOKIE, cookie.toString())
                     .body(new TokenRefreshResponse(accessToken, /* optionally null or omit refresh token */ null));
-        } catch (TokenRefreshException e) {
+        } catch (Exception e) {
             // revoke/detect reuse as appropriate
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid refresh token");
         }
@@ -238,8 +240,8 @@ public class AuthController {
             String accessToken = header.substring(7);
             System.out.println("Access token on logout: " + accessToken);
             try {
-                var jws = jwtUtil.parseToken(accessToken);
-                subjectFromAccessToken = jws.getBody().getSubject();
+                JWTClaimsSet claims = jwtUtil.parseAndVerify(accessToken);
+                subjectFromAccessToken = claims.getSubject();
             } catch (Exception ex) {
                 // ignore invalid/expired access token
                 ex.printStackTrace();

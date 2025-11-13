@@ -6,6 +6,7 @@ import org.springframework.cloud.gateway.route.RouteLocator;
 import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableReactiveMethodSecurity;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
@@ -25,6 +26,7 @@ public class ApiConfiguration {
                 .csrf(csrf -> csrf.disable()
                         .authorizeExchange(exchange -> exchange
                                 // allow auth endpoints through so login / refresh work
+                                .pathMatchers(HttpMethod.OPTIONS).permitAll()
                                 .pathMatchers("/auth/login", "/auth/signup", "/auth/refresh", "/auth/logout",
                                         "/public/**",
                                         "/actuator/**")
@@ -50,10 +52,10 @@ public class ApiConfiguration {
     public CorsWebFilter corsWebFilter() {
         CorsConfiguration corsConfig = new CorsConfiguration();
         corsConfig.addAllowedOrigin("http://localhost:5173");
-        corsConfig.addAllowedHeader("*");
-        corsConfig.addAllowedMethod("*");
+        corsConfig.setAllowedHeaders(List.of("Authorization", "Cache-Control", "Content-Type", "X-Requested-With"));
+        corsConfig.setAllowedMethods(List.of("GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"));
         corsConfig.setAllowCredentials(true);
-        corsConfig.setExposedHeaders(List.of("Set-Cookie"));
+        corsConfig.setExposedHeaders(List.of("Set-Cookie","Authorization", "Content-Type"));
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", corsConfig);
 

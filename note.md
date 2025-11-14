@@ -4,3 +4,5 @@
 4. Implement security at api-gatway: jwt token validation
 
 keytool -genkeypair -alias jwt -keyalg RSA -keysize 2048 -keystore jwt.p12 -storetype PKCS12 -storepass  me@#23 -keypass me@#23 -dname "CN=auth-service, OU=Dev, O=insightvault, L=Pune, ST=Maharashtra, C=IN" -validity 3650
+
+https://www.min.io/opensource

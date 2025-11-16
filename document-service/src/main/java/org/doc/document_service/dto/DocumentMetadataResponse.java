@@ -22,4 +22,7 @@ public class DocumentMetadataResponse {
     private Instant createdAt;
     private Instant updatedAt;
     private String requestId;
+    private String presignedGetUrl;
+    private Instant presignedGetUrlExpiresAt;
+    private Long presignedGetTtlSeconds;
 }

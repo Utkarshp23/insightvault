@@ -3,6 +3,7 @@ import jakarta.persistence.*;
 import lombok.Data;
 
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -16,39 +17,33 @@ import java.util.UUID;
 public class IdempotencyKey {
 
     @Id
-    @Column(name = "id", columnDefinition = "uuid")
+    @Column(name = "id", columnDefinition = "char(36)")
+    @JdbcTypeCode(java.sql.Types.VARCHAR)
     private UUID id;
 
-    @Column(name = "idempotency_key", nullable = false)
+    @Column(name = "idempotency_key", nullable = false, length = 512)
     private String idempotencyKey;
 
-    @Column(name = "owner_id", nullable = false)
+    @Column(name = "owner_id", nullable = false, length = 255)
     private String ownerId;
 
     /**
      * The document id returned for this idempotent request
      */
-    @Column(name = "document_id", columnDefinition = "uuid")
+    @Column(name = "document_id", columnDefinition = "char(36)")
     private UUID documentId;
 
     @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false, columnDefinition = "datetime(6)")
     private Instant createdAt;
 
-    @Column(name = "expires_at")
+    @Column(name = "expires_at", columnDefinition = "datetime(6)")
     private Instant expiresAt;
 
-    // Constructors, getters, setters
-
-    public IdempotencyKey() {}
-
-    public IdempotencyKey(UUID id, String idempotencyKey, String ownerId, UUID documentId, Instant expiresAt) {
-        this.id = id;
-        this.idempotencyKey = idempotencyKey;
-        this.ownerId = ownerId;
-        this.documentId = documentId;
-        this.expiresAt = expiresAt;
+    @PrePersist
+    public void ensureId() {
+        if (this.id == null) {
+            this.id = UUID.randomUUID();
+        }
     }
-
-    // Getters/setters ...
 }

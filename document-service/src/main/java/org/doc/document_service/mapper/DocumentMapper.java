@@ -1,33 +1,44 @@
 package org.doc.document_service.mapper;
 import org.doc.document_service.domain.Document;
-import org.doc.document_service.domain.DocumentStatus;
 import org.doc.document_service.dto.*;
 import org.mapstruct.*;
 import org.mapstruct.factory.Mappers;
-import org.springframework.stereotype.Component;
 
-import lombok.Data;
-
-import java.util.UUID;
 
 @Mapper(componentModel = "spring", uses = { JsonMapper.class })
 public interface DocumentMapper {
 
     DocumentMapper INSTANCE = Mappers.getMapper(DocumentMapper.class);
 
-    @Mapping(target = "id", source = "documentId")
-    @Mapping(target = "ownerId", source = "ownerId")
-    @Mapping(target = "tenantId", source = "tenantId")
-    @Mapping(target = "filename", source = "filename")
-    @Mapping(target = "mimeType", source = "mimeType")
-    @Mapping(target = "size", source = "size")
-    @Mapping(target = "storageKey", source = "storageKey")
-    @Mapping(target = "status", source = "status")
-    @Mapping(target = "checksum", source = "checksum")
-    @Mapping(target = "visibility", source = "visibility")
-    @Mapping(target = "metadata", expression = "java(jsonMapper.toJson(dto.getMetadata()))")
-    @Mapping(target = "requestId", source = "requestId")
-    Document toEntity(DocumentCreateRequest dto, @Context JsonMapper jsonMapper);
+    @Mapping(target = "id", expression = "java(generateUuid())")
+    @Mapping(target = "storageKey", ignore = true)
+    @Mapping(target = "metadata", ignore = true)
+    // fields that are not provided by create request should be left null or set elsewhere:
+    @Mapping(target = "ownerId", ignore = true)
+    @Mapping(target = "tenantId", ignore = true)
+    @Mapping(target = "status", ignore = true)
+    @Mapping(target = "checksum", ignore = true)
+    @Mapping(target = "requestId", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "updatedAt", ignore = true)
+    Document toDocument(DocumentCreateRequest request);
+
+    // helper used by MapStruct-generated code — provide here so generated impl can call it
+    default java.util.UUID generateUuid() {
+        return java.util.UUID.randomUUID();
+    }
+
+    @AfterMapping
+    default void enrichDocument(DocumentCreateRequest request, @MappingTarget Document target) {
+        // ensure id exists (in case MapStruct didn't call generateUuid for some reason)
+        if (target.getId() == null) {
+            target.setId(generateUuid());
+        }
+        // Build storage key using util (tenantId not available at create request level)
+        target.setStorageKey(org.doc.document_service.util.StorageKeyUtil.generateStorageKey(null, target.getId(), request.getFilename()));
+        // Serialize metadata map to JSON using the JsonMapper component (safe to instantiate here)
+        target.setMetadata(new JsonMapper().toJson(request.getMetadata()));
+    }
 
     // Map entity -> metadata response
     @Mapping(source = "id", target = "documentId")

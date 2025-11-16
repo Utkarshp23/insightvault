@@ -19,14 +19,8 @@ public class DocumentCreateRequest {
     @Positive(message = "size must be positive")
     private Long size;
 
-    /**
-     * Optional visibility: private / shared / public
-     */
     @Pattern(regexp = "^(private|shared|public)?$", message = "invalid visibility")
     private String visibility;
 
-    /**
-     * Free-form metadata. Keep small.
-     */
     private Map<String, Object> metadata;
 }

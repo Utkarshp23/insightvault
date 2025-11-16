@@ -41,6 +41,16 @@
             "projectName": "auth-service",
             "args": "",
             "envFile": "${workspaceFolder}/.env"
+        },
+        {
+            "type": "java",
+            "name": "Spring Boot-DocumentServiceApplication<document-service>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "org.doc.document_service.DocumentServiceApplication",
+            "projectName": "document-service",
+            "args": "",
+            "envFile": "${workspaceFolder}/.env"
         }
     ]
 }

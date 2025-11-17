@@ -8,6 +8,7 @@ import org.doc.document_service.dto.DocumentStatusResponse;
 import org.doc.document_service.service.DocumentService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -33,6 +34,7 @@ public class DocumentController {
      * - X-Request-Id (optional)
      * - Idempotency-Key (optional; recommended)
      */
+    @PreAuthorize("hasAuthority('SCOPE_doc:create')")
     @PostMapping
     public ResponseEntity<DocumentCreateResponse> createUploadIntent(
             @RequestHeader(value = "X-Request-Id", required = false) String xRequestId,
@@ -79,6 +81,7 @@ public class DocumentController {
      * (short-lived).
      * GET /documents/{id}?download=true
      */
+    @PreAuthorize("hasAuthority('SCOPE_doc:read')")
     @GetMapping("/{id}")
     public ResponseEntity<DocumentMetadataResponse> getDocument(
             @PathVariable("id") UUID documentId,

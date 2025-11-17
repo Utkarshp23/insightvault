@@ -15,3 +15,7 @@
             minio/minio server /data --console-address ":9001"
 
 8. Configuring MinIo in document-service 
+
+##To do: run query on user table : 
+ALTER TABLE users
+  ADD COLUMN permissions VARCHAR(1024) DEFAULT NULL;

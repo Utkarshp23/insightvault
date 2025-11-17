@@ -45,6 +45,8 @@ public class ApiConfiguration {
         return builder.routes()
                 .route(p -> p.path("/auth/**")
                         .uri("lb://auth-service"))
+                .route(p -> p.path("/documents/**")
+                        .uri("lb://document-service"))
                 .build();
     }
 

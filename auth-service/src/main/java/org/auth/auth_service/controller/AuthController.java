@@ -56,42 +56,25 @@ public class AuthController {
     @Autowired
     private RefreshTokenService refreshTokenService;
 
-    // public AuthController(UserRepository userRepo, PasswordEncoder
-    // passwordEncoder, JwtUtil jwtUtil,
-    // @Value("${jwt.expiration:3600}") long jwtExpirySeconds) {
-    // this.userRepo = userRepo;
-    // this.passwordEncoder = passwordEncoder;
-    // this.jwtUtil = jwtUtil;
-    // this.jwtExpirySeconds = jwtExpirySeconds;
-    // }
-
     @PostMapping("/signup")
     public ResponseEntity<?> signup(@Valid @RequestBody SignupRequest req) {
         if (userRepo.existsByEmail(req.getEmail())) {
             return ResponseEntity.badRequest().body("Email already in use");
         }
+        String rolesCsv = "ROLE_USER";
         User u = User.builder()
                 .email(req.getEmail())
                 .passwordHash(passwordEncoder.encode(req.getPassword()))
                 .roles("ROLE_USER")
                 .createdAt(Instant.now())
                 .build();
+
+        List<String> scopes = List.of("doc:create", "doc:read", "doc:update", "doc:delete");
+        u.setPermissions(String.join(",", scopes));
         userRepo.save(u);
         return ResponseEntity.ok("User created");
     }
 
-    // @PostMapping("/login")
-    // public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest
-    // req) {
-    // User user = userRepo.findByEmail(req.getEmail()).orElseThrow(() -> new
-    // RuntimeException("Invalid credentials"));
-    // if (!passwordEncoder.matches(req.getPassword(), user.getPasswordHash())) {
-    // throw new RuntimeException("Invalid credentials");
-    // }
-    // String token = jwtUtil.generateToken(user.getEmail(), List.of("ROLE_USER"));
-    // return ResponseEntity.ok(new AuthResponse(token, "Bearer",
-    // jwtExpirySeconds));
-    // }
     @PostMapping("/login")
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequest req, HttpServletResponse response) throws JOSEException {
         System.out.println("Login attempt for user: " + req.getEmail());
@@ -114,8 +97,9 @@ public class AuthController {
         }
 
         System.out.println();
+        List<String> scopes = user.getPermissionsList();
         // create access token (JWT)
-        String accessToken = jwtUtil.generateToken(user.getEmail(), roles);
+        String accessToken = jwtUtil.generateToken(user.getEmail(), roles, scopes);
 
         // create & persist refresh token (opaque string stored in DB)
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(user);
@@ -151,37 +135,6 @@ public class AuthController {
         return ResponseEntity.ok(result);
     }
 
-    // @PostMapping("/refresh")
-    // public ResponseEntity<?> refreshToken(@RequestBody TokenRefreshRequest
-    // request) {
-    // String requestToken = request.getRefreshToken(); // could come from cookie
-    // instead
-    // try {
-    // RefreshToken used = refreshTokenService.verifyAndConsume(requestToken);
-    // User user = used.getUser();
-
-    // List<String> roles = Arrays.stream(user.getRoles().split(","))
-    // .map(String::trim)
-    // .collect(Collectors.toList());
-
-    // String accessToken = jwtUtil.generateToken(user.getEmail(), roles);
-
-    // // create new refresh token (rotation)
-    // RefreshToken newRefresh = refreshTokenService.createRefreshToken(user);
-    // used.setReplacedByToken(newRefresh.getToken());
-    // // save used token already marked revoked in verifyAndConsume
-
-    // return ResponseEntity.ok(new TokenRefreshResponse(accessToken,
-    // newRefresh.getToken()));
-    // } catch (TokenRefreshException e) {
-    // // suspicious: token not found/expired/revoked => force logout/all sessions
-    // // revoke
-    // // Consider revoking all tokens for this user if reuse detected
-    // return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid refresh
-    // token");
-    // }
-    // }
-
     @PostMapping("/refresh")
     public ResponseEntity<?> refreshToken(
             @CookieValue(value = "refreshToken", required = false) String refreshTokenFromCookie,
@@ -206,7 +159,9 @@ public class AuthController {
             List<String> roles = Arrays.stream(user.getRoles().split(","))
                     .map(String::trim).collect(Collectors.toList());
 
-            String accessToken = jwtUtil.generateToken(user.getEmail(), roles);
+            List<String> scopes = user.getPermissionsList();
+            // create access token (JWT)
+            String accessToken = jwtUtil.generateToken(user.getEmail(), roles, scopes);
 
             // rotation: create new refresh token
             RefreshToken newRefresh = refreshTokenService.createRefreshToken(user);

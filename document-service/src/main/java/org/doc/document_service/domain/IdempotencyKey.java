@@ -31,6 +31,7 @@ public class IdempotencyKey {
      * The document id returned for this idempotent request
      */
     @Column(name = "document_id", columnDefinition = "char(36)")
+    @JdbcTypeCode(java.sql.Types.VARCHAR)
     private UUID documentId;
 
     @CreationTimestamp

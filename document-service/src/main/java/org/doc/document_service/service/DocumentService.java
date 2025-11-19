@@ -27,6 +27,7 @@ import com.netflix.discovery.converters.Auto;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -183,10 +184,17 @@ public class DocumentService {
             if (changed) {
                 documentRepository.save(doc);
                 // record audit
+                Map<String, Object> details = new HashMap<>();
+                details.put("notes", "idempotent update");
+                if (req.getSize() != null)
+                    details.put("size", req.getSize());
+                if (req.getChecksum() != null)
+                    details.put("checksum", req.getChecksum());
+
                 AuditEntry audit = new AuditEntry(null, doc.getId(), callerSub, "COMPLETE_UPLOAD (idempotent update)",
-                        jsonMapper.toJson(Map.of("notes", "idempotent update", "size", req.getSize(), "checksum",
-                                req.getChecksum())));
+                        jsonMapper.toJson(details));
                 auditRepository.save(audit);
+
             }
             return documentMapper.toMetadataResponse(doc, jsonMapper);
         }
@@ -214,12 +222,19 @@ public class DocumentService {
         audit.setDocumentId(doc.getId());
         audit.setActorId(callerSub);
         audit.setAction("COMPLETE_UPLOAD");
-        audit.setDetails(jsonMapper.toJson(
-                Map.of("size", req.getSize(), "checksum", req.getChecksum(), "storageKey", doc.getStorageKey())));
+        Map<String, Object> details2 = new HashMap<>();
+        if (req.getSize() != null)
+            details2.put("size", req.getSize());
+        if (req.getChecksum() != null)
+            details2.put("checksum", req.getChecksum());
+        details2.put("storageKey", doc.getStorageKey());
+
+        audit.setDetails(jsonMapper.toJson(details2));
         auditRepository.save(audit);
 
         // Publish processing job (worker consumes and does scanning/OCR/indexing)
-        // processingPublisher.publishProcessingJob(doc.getId(), doc.getStorageKey(), doc.getRequestId());
+        // processingPublisher.publishProcessingJob(doc.getId(), doc.getStorageKey(),
+        // doc.getRequestId());
 
         return documentMapper.toMetadataResponse(doc, jsonMapper);
     }
@@ -264,7 +279,7 @@ public class DocumentService {
                 // ask storage for a presigned GET URL
                 PresignedUrlResponse presigned = storageService.generatePresignedGetUrl(doc.getStorageKey(),
                         presignedTtlSeconds);
-                
+
                 resp.setPresignedGetUrl(presigned.getUrl());
                 resp.setPresignedGetUrlExpiresAt(presigned.getExpiresAt());
                 resp.setPresignedGetTtlSeconds(presigned.getTtlSeconds());

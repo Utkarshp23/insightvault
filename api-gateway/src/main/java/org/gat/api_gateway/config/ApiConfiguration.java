@@ -55,7 +55,7 @@ public class ApiConfiguration {
         CorsConfiguration corsConfig = new CorsConfiguration();
         corsConfig.addAllowedOrigin("http://localhost:5173");
         corsConfig.setAllowedHeaders(List.of("Authorization", "Cache-Control", "Content-Type", "X-Requested-With","X-Request-Id","Idempotency-Key"));
-        corsConfig.setAllowedMethods(List.of("GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"));
+        corsConfig.setAllowedMethods(List.of("GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS","PATCH"));
         corsConfig.setAllowCredentials(true);
         corsConfig.setExposedHeaders(List.of("Set-Cookie","Authorization", "Content-Type","X-Request-Id"));
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

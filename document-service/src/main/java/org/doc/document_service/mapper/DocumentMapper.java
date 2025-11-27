@@ -57,6 +57,15 @@ public interface DocumentMapper {
     @Mapping(source = "requestId", target = "requestId")
     DocumentMetadataResponse toMetadataResponse(Document entity, @Context JsonMapper jsonMapper);
 
+    // Map entity -> list item (NEW)
+    @Mapping(source = "id", target = "documentId")
+    @Mapping(source = "filename", target = "filename")
+    @Mapping(source = "mimeType", target = "mimeType")
+    @Mapping(source = "size", target = "size")
+    @Mapping(source = "status", target = "status")
+    @Mapping(source = "createdAt", target = "createdAt")
+    DocumentListItem toListItem(Document entity);
+
     // For create-response keep only a few fields
     @Mapping(source = "id", target = "documentId")
     @Mapping(source = "storageKey", target = "storageKey")

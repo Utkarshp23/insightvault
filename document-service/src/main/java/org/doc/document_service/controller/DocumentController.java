@@ -3,6 +3,7 @@ package org.doc.document_service.controller;
 import org.doc.document_service.dto.DocumentCompleteRequest;
 import org.doc.document_service.dto.DocumentCreateRequest;
 import org.doc.document_service.dto.DocumentCreateResponse;
+import org.doc.document_service.dto.DocumentListResponse;
 import org.doc.document_service.dto.DocumentMetadataResponse;
 import org.doc.document_service.dto.DocumentStatusResponse;
 import org.doc.document_service.service.DocumentService;
@@ -90,6 +91,36 @@ public class DocumentController {
         String caller = extractOwnerId(authentication);
         DocumentMetadataResponse resp = documentService.getMetadata(documentId, caller, download);
         return ResponseEntity.ok(resp);
+    }
+
+    /**
+     * List documents with pagination.
+     * GET /documents?page=0&size=10
+     */
+    @PreAuthorize("hasAuthority('SCOPE_doc:read')")
+    @GetMapping
+    public ResponseEntity<DocumentListResponse> listDocuments(
+            Authentication authentication,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size) {
+
+        String ownerId = extractOwnerId(authentication);
+        DocumentListResponse resp = documentService.listDocuments(ownerId, page, size);
+        return ResponseEntity.ok(resp);
+    }
+
+    /**
+     * Delete a document.
+     * DELETE /documents/{id}
+     */
+    @PreAuthorize("hasAuthority('SCOPE_doc:delete')") 
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteDocument(
+            @PathVariable("id") UUID documentId,
+            Authentication authentication) {
+        String ownerId = extractOwnerId(authentication);
+        documentService.deleteDocument(documentId, ownerId);
+        return ResponseEntity.noContent().build();
     }
 
     private String extractOwnerId(Authentication authentication) {

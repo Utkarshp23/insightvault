@@ -5,8 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
-
-@Component
+// Fix: Give it a specific name to avoid collision with Spring Cloud's "jsonMapper"
+@Component("documentJsonMapper")
 public class JsonMapper {
 
     private final ObjectMapper objectMapper = new ObjectMapper();

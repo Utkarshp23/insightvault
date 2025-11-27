@@ -8,6 +8,8 @@ import org.doc.document_service.domain.IdempotencyKey;
 import org.doc.document_service.dto.DocumentCompleteRequest;
 import org.doc.document_service.dto.DocumentCreateRequest;
 import org.doc.document_service.dto.DocumentCreateResponse;
+import org.doc.document_service.dto.DocumentListItem;
+import org.doc.document_service.dto.DocumentListResponse;
 import org.doc.document_service.dto.DocumentMetadataResponse;
 import org.doc.document_service.dto.DocumentStatusResponse;
 import org.doc.document_service.mapper.DocumentMapper;
@@ -20,7 +22,13 @@ import org.doc.document_service.storage.PresignedUrlResponse;
 import org.doc.document_service.storage.StorageService;
 import org.doc.document_service.util.StorageKeyUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+import java.util.List;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.netflix.discovery.converters.Auto;
@@ -31,6 +39,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class DocumentService {
@@ -47,8 +56,8 @@ public class DocumentService {
     @Autowired
     private JsonMapper jsonMapper;
 
-    // @Autowired(required = false)
-    // private ProcessingPublisher processingPublisher;
+    @Autowired(required = false)
+    private ProcessingPublisher processingPublisher;
 
     @Autowired
     private AuditRepository auditRepository;
@@ -233,8 +242,8 @@ public class DocumentService {
         auditRepository.save(audit);
 
         // Publish processing job (worker consumes and does scanning/OCR/indexing)
-        // processingPublisher.publishProcessingJob(doc.getId(), doc.getStorageKey(),
-        // doc.getRequestId());
+        processingPublisher.publishProcessingJob(doc.getId(), doc.getStorageKey(),
+        doc.getRequestId());
 
         return documentMapper.toMetadataResponse(doc, jsonMapper);
     }
@@ -290,6 +299,64 @@ public class DocumentService {
         }
 
         return resp;
+    }
+
+    /**
+     * List documents for a specific owner with pagination.
+     */
+    @Transactional(readOnly = true)
+    public DocumentListResponse listDocuments(String ownerId, int page, int size) {
+        // PageRequest is 0-indexed
+        PageRequest pageReq = PageRequest.of(page, size, Sort.by("createdAt").descending());
+
+        Page<Document> docPage = documentRepository.findByOwnerId(ownerId, pageReq);
+
+        List<DocumentListItem> items = docPage.getContent().stream()
+                .map(documentMapper::toListItem)
+                .collect(Collectors.toList());
+
+        DocumentListResponse resp = new DocumentListResponse();
+        resp.setItems(items);
+        resp.setPage(page);
+        resp.setSize(size);
+        resp.setTotal(docPage.getTotalElements());
+
+        return resp;
+    }
+
+    /**
+     * Delete a document:
+     * 1. Remove from Storage (MinIO).
+     * 2. Mark as DELETED in DB (Soft Delete).
+     * 3. Create Audit log.
+     */
+    @Transactional
+    public void deleteDocument(UUID documentId, String callerSub) {
+        Document doc = documentRepository.findById(documentId)
+                .orElseThrow(() -> new IllegalArgumentException("document not found"));
+
+        if (!callerSub.equals(doc.getOwnerId()) && !isAdmin(callerSub)) {
+            throw new SecurityException("Not allowed to delete this document");
+        }
+
+        // 1. Remove from MinIO (if it exists and has a key)
+        if (doc.getStorageKey() != null) {
+            try {
+                storageService.delete(doc.getStorageKey());
+            } catch (Exception e) {
+                // Log warning, but proceed to mark as deleted in DB so UI stays consistent
+                System.err.println("Warning: Failed to delete file from storage: " + e.getMessage());
+            }
+        }
+
+        // 2. Soft delete in DB
+        doc.setStatus(DocumentStatus.DELETED);
+        doc.setUpdatedAt(Instant.now());
+        documentRepository.save(doc);
+
+        // 3. Audit
+        AuditEntry audit = new AuditEntry(null, doc.getId(), callerSub, "DELETE", null);
+        auditRepository.save(audit);
     }
 
     private boolean isAdmin(String callerSub) {

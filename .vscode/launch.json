@@ -63,6 +63,17 @@
             "mainClass": "org.proc.ai_processor_service.AiProcessorServiceApplication",
             "projectName": "ai-processor-service",
             "args": "",
+            "envFile": "${workspaceFolder}/.env",
+            "vmArgs": " -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=54878 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dspring.jmx.enabled=true -Djava.rmi.server.hostname=localhost -Dspring.application.admin.enabled=true -Dspring.boot.project.name=ai-processor-service"
+        },
+        {
+            "type": "java",
+            "name": "Spring Boot-SearchServiceApplication<search-service>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "org.srh.search_service.SearchServiceApplication",
+            "projectName": "search-service",
+            "args": "",
             "envFile": "${workspaceFolder}/.env"
         }
     ]

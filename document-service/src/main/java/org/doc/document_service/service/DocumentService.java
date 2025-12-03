@@ -359,6 +359,31 @@ public class DocumentService {
         auditRepository.save(audit);
     }
 
+    /**
+     * Update metadata for a document (used by AI processor).
+     */
+    @Transactional
+    public void updateMetadata(UUID documentId, Map<String, Object> newMetadata) {
+        Document doc = documentRepository.findById(documentId)
+                .orElseThrow(() -> new IllegalArgumentException("document not found"));
+
+        // Merge new metadata into existing
+        Map<String, Object> existingMeta = jsonMapper.fromJson(doc.getMetadata());
+        if (existingMeta == null) {
+            existingMeta = new HashMap<>();
+        }
+        existingMeta.putAll(newMetadata);
+
+        doc.setMetadata(jsonMapper.toJson(existingMeta));
+        
+        // Optionally update status to PROCESSED if it was PROCESSING
+        if (doc.getStatus() == DocumentStatus.UPLOADED || doc.getStatus() == DocumentStatus.PROCESSING) {
+            doc.setStatus(DocumentStatus.PROCESSED);
+        }
+        
+        documentRepository.save(doc);
+    }
+
     private boolean isAdmin(String callerSub) {
         // placeholder — check if caller is an admin, e.g. by querying user service or
         // checking roles from token if available

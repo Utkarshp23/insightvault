@@ -47,6 +47,8 @@ public class ApiConfiguration {
                         .uri("lb://auth-service"))
                 .route(p -> p.path("/documents/**")
                         .uri("lb://document-service"))
+                .route(p -> p.path("/search/**")
+                        .uri("lb://search-service"))
                 .build();
     }
 

@@ -36,13 +36,8 @@ public class LlmService {
                 %s
                 """.formatted(truncatedText, format);
 
-        // Call the AI model
         ChatResponse response = chatModel.call(new Prompt(userPrompt));
-
-        // FIX: Get the actual text content from the generation result
         String responseContent = response.getResult().getOutput().getText();
-
-        // Convert the clean JSON string to AnalysisResult
         return converter.convert(responseContent);
     }
 }

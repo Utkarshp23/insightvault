@@ -81,21 +81,11 @@ public class JwtUtil {
                 .subject(subject)
                 .issueTime(iat)
                 .expirationTime(exp)
-
-                // OAuth2 access token recommended claims:
-                .issuer("http://auth-service") // MUST MATCH issuerUri in resource servers
-
-                .audience(List.of("document-service", // audience required by document-service
-                        "api-gateway")) // optional: token valid for gateway too
-
-                // Authorities/permissions:
-                .claim("scope", scopeString) // standard OAuth2 scope claim
-                .claim("roles", roles) // keep roles if your services use it
-
-                // Optional custom claims
-                // .claim("tenant", "tenant-id-123")
-                // .claim("email", "user@example.com")
-
+                .issuer("http://auth-service") 
+                .audience(List.of("document-service", 
+                        "api-gateway")) 
+                .claim("scope", scopeString) 
+                .claim("roles", roles) 
                 .build();
 
         JWSHeader header = new JWSHeader.Builder(JWSAlgorithm.RS256)

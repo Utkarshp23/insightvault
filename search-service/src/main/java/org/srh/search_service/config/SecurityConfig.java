@@ -1,9 +1,8 @@
-package org.doc.document_service.config;
+package org.srh.search_service.config;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
@@ -15,63 +14,53 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
 @EnableMethodSecurity(prePostEnabled = true)
 public class SecurityConfig {
 
-    @Value("${security.mock.enabled:false}")
-    private boolean mockEnabled;
-
     @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri}")
     private String jwkSetUri;
 
-    /**
-     * Main security filter chain:
-     * - If mockEnabled: register DevAuthFilter before other auth filters.
-     * - Otherwise enable oauth2 resource server (JWT).
-     */
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, DevAuthFilter devAuthFilter) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(csrf -> csrf.disable())
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/**").permitAll()
-                        .requestMatchers("/docs/**", "/swagger-ui/**").permitAll()
-                        // Internal API: Requires specific scope
-                        .requestMatchers("/documents/*/metadata").hasAuthority("SCOPE_metadata:update")
-                        .anyRequest().authenticated());
-
-        if (mockEnabled) {
-            http.addFilterBefore(devAuthFilter, UsernamePasswordAuthenticationFilter.class);
-        } else {
-            http.oauth2ResourceServer(oauth2 -> oauth2
-                    .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));
-        }
+            .csrf(csrf -> csrf.disable())
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/actuator/**").permitAll()
+                // All other requests (e.g. /search) require authentication
+                .anyRequest().authenticated()
+            )
+            .oauth2ResourceServer(oauth2 -> oauth2
+                .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
+            );
 
         return http.build();
     }
 
+    // Helper to extract scopes from the JWT and map them to Spring Security authorities
     @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
         JwtGrantedAuthoritiesConverter scopesConverter = new JwtGrantedAuthoritiesConverter();
         scopesConverter.setAuthorityPrefix("SCOPE_");
-        scopesConverter.setAuthoritiesClaimName("scope"); // or "scp" depending on token
-
+        scopesConverter.setAuthoritiesClaimName("scope"); // "scope" or "scp" depending on your Auth Service
+        
         JwtAuthenticationConverter jwtConverter = new JwtAuthenticationConverter();
         jwtConverter.setJwtGrantedAuthoritiesConverter(scopesConverter);
         return jwtConverter;
     }
 
-    @Bean
+     @Bean
     public JwtDecoder jwtDecoder() {
         NimbusJwtDecoder jwtDecoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
-        OAuth2TokenValidator<Jwt> audienceValidator = new AudienceValidator("document-service");
+        
+        // 1. Validate Issuer (Who created this token?)
         OAuth2TokenValidator<Jwt> withIssuer = JwtValidators.createDefaultWithIssuer("http://auth-service");
-        OAuth2TokenValidator<Jwt> validator = new DelegatingOAuth2TokenValidator<>(withIssuer, audienceValidator);
-        jwtDecoder.setJwtValidator(validator);
+       
+        // 2. Additional custom validations can be added here
+        OAuth2TokenValidator<Jwt> tokenValidator = new DelegatingOAuth2TokenValidator<>(withIssuer);
+        
+        jwtDecoder.setJwtValidator(tokenValidator);
         return jwtDecoder;
     }
-
 }

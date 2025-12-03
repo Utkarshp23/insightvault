@@ -17,6 +17,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -145,6 +146,23 @@ public class DocumentController {
         }
 
         throw new IllegalStateException("Unable to determine owner id from authentication");
+    }
+
+    /**
+     * Internal endpoint for services to update metadata (e.g. AI analysis).
+     * In a real system, you'd secure this with a system-to-system token or network restriction.
+     */
+    @PatchMapping("/{id}/metadata")
+    public ResponseEntity<Void> updateMetadata(
+            @PathVariable("id") UUID documentId,
+            @RequestBody Map<String, Object> metadata) {
+        
+        // Note: We are bypassing "ownerId" check here because this is a system call.
+        // In production, ensure this endpoint is not exposed to public internet 
+        // or require a special scope/role like "SCOPE_system".
+        
+        documentService.updateMetadata(documentId, metadata);
+        return ResponseEntity.noContent().build();
     }
 
 }

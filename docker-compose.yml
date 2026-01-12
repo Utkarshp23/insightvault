@@ -1,0 +1,228 @@
+# version: '3.8'
+
+services:
+  # --- INFRASTRUCTURE SERVICES ---
+
+  mysql-db:
+    image: mysql:8.0
+    container_name: mysql-db
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: insight_auth_db # Default DB, others created manually or via init script
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - insight-net
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  minio:
+    image: minio/minio
+    container_name: minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - insight-net
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - insight-net
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m" # Limit memory usage
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elastic_data:/usr/share/elasticsearch/data
+    networks:
+      - insight-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # --- APPLICATION SERVICES ---
+
+  config-server:
+    image: insightvault-config-server:v1
+    container_name: config-server
+    build: ./config-server
+    ports:
+      - "8888:8888"
+    environment:
+      # Mount the volume and point to it
+      - SPRING_CLOUD_CONFIG_SERVER_GIT_URI=file:///config-repo
+    volumes:
+      # UPDATE THIS PATH to your actual local path
+      - U:/Microservices/insightvault/config-repo:/config-repo
+    networks:
+      - insight-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  eureka-server:
+    image: insightvault-eureka-server:v1
+    container_name: eureka-server
+    build: ./eureka-server
+    ports:
+      - "8761:8761"
+    environment:
+      - SPRING_CONFIG_IMPORT=configserver:http://config-server:8888
+      - SERVER_PORT=8761
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
+      - EUREKA_INSTANCE_HOSTNAME=eureka-server
+      # - EUREKA_CLIENT_REGISTER_WITH_EUREKA=false
+      # - EUREKA_CLIENT_FETCH_REGISTRY=false
+    depends_on:
+      config-server:
+        condition: service_healthy
+    networks:
+      - insight-net
+
+  auth-service:
+    image: insightvault-auth-service:v1
+    container_name: auth-service
+    build: ./auth-service
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_CONFIG_IMPORT=configserver:http://config-server:8888
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql-db:3306/insight_auth_db
+      - JWT_KEYSTORE_PATH=/certs/jwt.p12
+      # Fix for Phase 3 Networking
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
+    volumes:
+      # UPDATE THIS PATH to your actual local path
+      - U:/Microservices/securityCert:/certs
+    depends_on:
+      mysql-db:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+    networks:
+      - insight-net
+
+  document-service:
+    image: insightvault-document-service:v1
+    container_name: document-service
+    build: ./document-service
+    ports:
+      - "8082:8082"
+    environment:
+      - SPRING_CONFIG_IMPORT=configserver:http://config-server:8888
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql-db:3306/insight_doc_db
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - STORAGE_ENDPOINT=http://minio:9000
+      - STORAGE_PUBLIC_ENDPOINT=http://localhost:5173/minio
+      # JWK Set URI points to auth-service internally
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://auth-service:8081/.well-known/jwks.json
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
+    volumes:
+      # Optional: if you need keys/certs here too
+      - U:/Microservices/securityCert:/certs
+    depends_on:
+      - mysql-db
+      - rabbitmq
+      - minio
+      - eureka-server
+      - auth-service
+    networks:
+      - insight-net
+
+  ai-processor-service:
+    image: insightvault-ai-service:v1
+    container_name: ai-service
+    build: ./ai-processor-service
+    ports:
+      - "8083:8083"
+    environment:
+      - SPRING_CONFIG_IMPORT=configserver:http://config-server:8888
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - STORAGE_ENDPOINT=http://minio:9000
+      - DOCUMENT_SERVICE_URL=http://document-service:8082
+      - AUTH_SERVICE_URL=http://auth-service:8081
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
+    depends_on:
+      - rabbitmq
+      - minio
+      - eureka-server
+    networks:
+      - insight-net
+
+  search-service:
+    image: insightvault-search-service:v1
+    container_name: search-service
+    build: ./search-service
+    ports:
+      - "8084:8084"
+    environment:
+      - SPRING_CONFIG_IMPORT=configserver:http://config-server:8888
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_ELASTICSEARCH_URIS=http://elasticsearch:9200
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://auth-service:8081/.well-known/jwks.json
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
+
+    depends_on:
+      elasticsearch:
+          condition: service_healthy 
+      eureka-server:
+          condition: service_started
+    networks:
+      - insight-net
+    restart: on-failure 
+
+  api-gateway:
+    image: insightvault-gateway:v1
+    container_name: api-gateway
+    build: ./api-gateway
+    ports:
+      - "8765:8765"
+    environment:
+      - SPRING_CONFIG_IMPORT=configserver:http://config-server:8888
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI=http://auth-service:8081/.well-known/jwks.json
+    depends_on:
+      - eureka-server
+    networks:
+      - insight-net
+
+volumes:
+  mysql_data:
+  minio_data:
+  elastic_data:
+
+networks:
+  insight-net:
+    driver: bridge

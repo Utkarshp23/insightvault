@@ -6,6 +6,7 @@ import io.minio.http.Method;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.time.Instant;
 import java.util.concurrent.TimeUnit;
@@ -20,6 +21,14 @@ public class MinioStorageService implements StorageService {
     @Autowired
     private StorageProperties props;
 
+    @Value("${storage.public-endpoint:}") 
+    private String publicEndpoint;
+
+    // Inject the internal endpoint (e.g., http://minio:9000)
+    // This is needed to identify what part of the URL to replace
+    @Value("${storage.endpoint}")
+    private String internalEndpoint;
+
     @Override
     public PresignedUrlResponse generatePresignedPutUrl(String storageKey, long ttlSeconds) {
         try {
@@ -32,6 +41,11 @@ public class MinioStorageService implements StorageService {
                             .expiry((int) ttlSeconds, TimeUnit.SECONDS)
                             .build()
             );
+
+            if (publicEndpoint != null && !publicEndpoint.isBlank()) {
+                // Replace "http://minio:9000" with "http://localhost:3000/minio"
+                url = url.replace(internalEndpoint, publicEndpoint);
+            }
 
             return new PresignedUrlResponse(url, Instant.now().plusSeconds(ttlSeconds), ttlSeconds);
 
@@ -72,6 +86,11 @@ public class MinioStorageService implements StorageService {
                             .expiry((int) ttlSeconds, TimeUnit.SECONDS)
                             .build()
             );
+
+            if (publicEndpoint != null && !publicEndpoint.isBlank()) {
+                // Replace "http://minio:9000" with "http://localhost:3000/minio"
+                url = url.replace(internalEndpoint, publicEndpoint);
+            }
 
             return new PresignedUrlResponse(url, Instant.now().plusSeconds(ttlSeconds), ttlSeconds);
 

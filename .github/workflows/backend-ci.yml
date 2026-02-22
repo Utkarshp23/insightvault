@@ -24,7 +24,14 @@ jobs:
 
       # 3. Build all Spring Boot Microservices (Assumes you have a parent pom.xml at the root)
       - name: Build with Maven
-        run: mvn clean package -DskipTests
+        run: |
+          mvn clean package -DskipTests -f ./config-server/pom.xml
+          mvn clean package -DskipTests -f ./eureka-server/pom.xml
+          mvn clean package -DskipTests -f ./auth-service/pom.xml
+          mvn clean package -DskipTests -f ./document-service/pom.xml
+          mvn clean package -DskipTests -f ./ai-processor-service/pom.xml
+          mvn clean package -DskipTests -f ./search-service/pom.xml
+          mvn clean package -DskipTests -f ./api-gateway/pom.xml
 
       # 4. Login to Docker Hub securely
       - name: Log in to Docker Hub
